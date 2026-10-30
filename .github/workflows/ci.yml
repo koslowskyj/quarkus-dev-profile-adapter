@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+
+      # The example's tests start Postgres through Testcontainers; the runner has Docker.
+      - name: Build and test
+        run: mvn -B -ntp verify
+
+      - name: Check the version follows the Quarkus line
+        run: .github/scripts/check-quarkus-line.sh
+
+  # Every push to main that passes the checks and carries a feat, fix, perf, revert or breaking
+  # commit is released: published to Maven Central, committed, tagged, and given a GitHub release.
+  # See .github/scripts/next-version.sh for how the version is worked out.
+  release:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # waitUntil=published makes the deploy wait until Central has the version live.
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_TOKEN
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Work out the next version
+        id: version
+        run: .github/scripts/next-version.sh
+
+      # Published before anything is tagged or pushed: a failed upload leaves main as it was,
+      # and a re-run starts over cleanly.
+      - name: Publish to Maven Central
+        if: steps.version.outputs.skip != 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          mvn -B -ntp versions:set -DnewVersion="$NEXT" -DgenerateBackupPoms=false
+          # The check job ran the tests; the example is a demo and never published.
+          mvn -B -ntp -P release deploy -DskipTests -pl '!dev-profile-adapter-example'
+
+      - name: Commit the release, tag it and open the next development version
+        if: steps.version.outputs.skip != 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+          SNAPSHOT: ${{ steps.version.outputs.snapshot }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(release): v$NEXT"
+          git tag "v$NEXT"
+          mvn -B -ntp -q versions:set -DnewVersion="$SNAPSHOT" -DgenerateBackupPoms=false
+          git commit -am "chore(release): next development version $SNAPSHOT"
+          git push origin HEAD:main "v$NEXT"
+
+      - name: Create the GitHub release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          gh release create "v$NEXT" --title "v$NEXT" --generate-notes \
+            --notes "Maven Central: \`io.github.koslowskyj:dev-profile-adapter:$NEXT\` (Quarkus ${NEXT%.*}.x)."

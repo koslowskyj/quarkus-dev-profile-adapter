@@ -11,6 +11,7 @@
 
     <artifactId>dev-profile-adapter-deployment</artifactId>
     <name>Dev Profile Adapter - Deployment</name>
+    <description>Build steps of the Dev Profile Adapter Quarkus extension.</description>
 
     <dependencies>
         <dependency>

@@ -1,5 +1,8 @@
 # Dev Profile Adapter for Quarkus
 
+[![CI](https://github.com/koslowskyj/quarkus-dev-profile-adapter/actions/workflows/ci.yml/badge.svg)](https://github.com/koslowskyj/quarkus-dev-profile-adapter/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.koslowskyj/dev-profile-adapter)](https://central.sonatype.com/artifact/io.github.koslowskyj/dev-profile-adapter)
+
 A Quarkus extension that lets **`quarkus:dev` adopt a `QuarkusTestProfile`**. Dev mode then starts
 the *same* test resources (databases, mock servers, brokers, …) and gets the *same* configuration
 as your `@QuarkusTest` suite. There's no second copy of that wiring in a `%dev` block.
@@ -119,8 +122,9 @@ The adapter's version follows the Quarkus version it is built for:
 
 `provided` puts the extension on the dev and test classpath and keeps it out of the packaged app.
 
-> Until a release is published to a repository you can reach, build it once with `mvn install`
-> (see [Building from source](#building-from-source)) and use `3.40.0-SNAPSHOT`.
+> Releases are published to Maven Central (see the badge at the top for the latest). To try
+> unreleased changes, build it once with `mvn install` (see [Building from source](#building-from-source))
+> and depend on the `-SNAPSHOT` version from the root `pom.xml`.
 
 ### 2. Have a `QuarkusTestProfile`
 
@@ -439,31 +443,70 @@ mvn verify -pl '!dev-profile-adapter-example'   # skip the Docker-based example
 
 ## Releasing
 
-Each release keeps the version tied to its Quarkus line ([Versioning](#versioning-and-compatibility)).
+Releases are automatic. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) has two jobs:
 
-**Fix or feature on the current Quarkus line**, e.g. `3.40.0` → `3.40.1`:
+- **`check`** runs on every push and pull request. It runs `mvn verify`, then
+  [`check-quarkus-line.sh`](.github/scripts/check-quarkus-line.sh), which fails the build unless the
+  project version and `requires-quarkus-core` follow `quarkus.version`.
+- **`release`** runs on every push to `main` that passes `check`:
+  1. [`next-version.sh`](.github/scripts/next-version.sh) works out the next version from the
+     Quarkus line and the [conventional commits](https://www.conventionalcommits.org) since the last
+     tag on that line. If nothing is release-worthy, the job stops here.
+  2. It sets that version and publishes the runtime, deployment and parent POM to **Maven Central**:
+     signed, with sources and javadoc, and it waits until Central reports the version as published.
+  3. It commits `chore(release): vX.Y.Z`, tags `vX.Y.Z`, commits the next `-SNAPSHOT` version and
+     pushes both commits and the tag.
+  4. It creates a GitHub release with generated notes.
 
-```bash
-mvn versions:set -DnewVersion=3.40.1 -DgenerateBackupPoms=false
-mvn verify
-git commit -am "release: 3.40.1" && git tag v3.40.1
-# deploy, then move to the next snapshot
-mvn versions:set -DnewVersion=3.40.2-SNAPSHOT -DgenerateBackupPoms=false
-```
+Nothing is tagged or pushed until the upload has succeeded. A failed publish leaves `main` untouched,
+and re-running the job starts over cleanly.
 
-**Moving to a new Quarkus minor**, e.g. 3.40 → 3.41. Change these three values together:
+### Commit messages decide whether a release happens
+
+Major and minor always belong to Quarkus, so a commit can raise **only the fix number**:
+
+| Commits since the last tag on this Quarkus line | Release |
+|---|---|
+| none yet on this line (first release, or `quarkus.version` moved to a new minor) | `<line>.0`, e.g. `3.41.0` |
+| any `feat:`, `fix:`, `perf:` or `revert:` | last fix + 1, e.g. `3.40.3` → `3.40.4` |
+| a breaking change (`feat!:`, `fix(scope)!:`, or a `BREAKING CHANGE:` footer) | last fix + 1, the same as a fix; say what breaks in the commit body, because it ends up in the release notes |
+| only `docs:`, `ci:`, `chore:`, `test:`, `refactor:`, `build:` or `style:` | **none**: a version on Maven Central can never be withdrawn, so changes that don't affect users don't produce one |
+
+Scopes work as usual: `fix(deployment): close the class loader on shutdown`.
+
+### Moving to a new Quarkus minor
+
+Example: 3.40 → 3.41. Change these three values in one commit; `check` fails if one is missing:
 
 | Where | From | To |
 |---|---|---|
 | root `pom.xml`, `<quarkus.version>` | `3.40.x` | `3.41.x` |
-| project version (`mvn versions:set`) | `3.40.n-SNAPSHOT` | `3.41.0-SNAPSHOT` |
+| project version (`mvn versions:set -DnewVersion=3.41.0-SNAPSHOT -DgenerateBackupPoms=false`) | `3.40.n-SNAPSHOT` | `3.41.0-SNAPSHOT` |
 | `dev-profile-adapter/pom.xml`, `<requiresQuarkusCore>` | `[3.40,3.41)` | `[3.41,3.42)` |
 
 Also check `<testcontainers.version>` in the example POM against the Testcontainers version the new
-Quarkus BOM manages. Then run `mvn verify` and fix whatever the Quarkus-internal API changes broke.
+Quarkus BOM manages, and fix whatever Quarkus-internal API changes broke. Once that commit is merged,
+`release` publishes `3.41.0` even if the commit is only a `build:` one. The previous line's
+`3.40.*` versions stay on Central.
 
-**A new Quarkus patch release** (3.40.1 → 3.40.2) only needs a `<quarkus.version>` bump. It doesn't
-force a new adapter version.
+**A new Quarkus patch release** (3.40.1 → 3.40.2) needs only a `<quarkus.version>` bump. Commit it as
+`fix(deps): Quarkus 3.40.2` if users should get a new adapter release built against it. Commit it as
+`build(deps): …` if they shouldn't.
+
+### One-time setup for publishing
+
+| Where | What |
+|---|---|
+| [central.sonatype.com](https://central.sonatype.com) | Sign in with the GitHub account `koslowskyj`. The namespace `io.github.koslowskyj` is then verified automatically. Generate a **user token** under *View Account → Generate User Token*. |
+| A GPG key | `gpg --quick-gen-key 'koslowskyj <19502456+koslowskyj@users.noreply.github.com>' ed25519 sign 3y`, then publish the public key: `gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>` |
+| GitHub → *Settings → Secrets and variables → Actions* | `CENTRAL_USERNAME` and `CENTRAL_TOKEN` (the two halves of the user token), `GPG_PRIVATE_KEY` (`gpg --armor --export-secret-keys <KEY_ID>`), `GPG_PASSPHRASE` |
+| GitHub → *Settings → Branches* | If `main` is protected, let `github-actions[bot]` push to it. The release job pushes the version commits. |
+
+Try the release build locally without publishing:
+
+```bash
+mvn -P release verify -DskipTests -Dgpg.skip -pl '!dev-profile-adapter-example'
+```
 
 ## License
 
