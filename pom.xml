@@ -8,7 +8,7 @@
     <artifactId>dev-profile-adapter-parent</artifactId>
     <!-- <quarkus major>.<quarkus minor>.<adapter fix>: the first two parts always equal quarkus.version's,
          the third counts this project's own releases on that Quarkus line. See README "Versioning". -->
-    <version>3.40.0</version>
+    <version>3.40.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Dev Profile Adapter (parent)</name>
     <description>Lets quarkus:dev adopt a QuarkusTestProfile: starts its test resources and injects their config.</description>

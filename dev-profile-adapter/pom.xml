@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.koslowskyj</groupId>
         <artifactId>dev-profile-adapter-parent</artifactId>
-        <version>3.40.0</version>
+        <version>3.40.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>dev-profile-adapter</artifactId>
