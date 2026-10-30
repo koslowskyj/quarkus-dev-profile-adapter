@@ -1,0 +1,10 @@
+name: Dev Profile Adapter
+description: Adopts a QuarkusTestProfile in quarkus:dev - starts its test resources and injects their config.
+metadata:
+  keywords:
+    - devservices
+    - testing
+    - profile
+  categories:
+    - "miscellaneous"
+  status: "experimental"

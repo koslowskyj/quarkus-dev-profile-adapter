@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.koslowskyj</groupId>
+        <artifactId>dev-profile-adapter-parent</artifactId>
+        <version>3.40.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>dev-profile-adapter-deployment</artifactId>
+    <name>Dev Profile Adapter - Deployment</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>dev-profile-adapter</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc-deployment</artifactId>
+        </dependency>
+
+        <!-- Generic test harness: QuarkusTestProfile + QuarkusTestResourceLifecycleManager.
+             Any adopted profile needs this; it is NOT on the dev classpath by default.
+             (quarkus-junit5 is relocated to quarkus-junit.) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit</artifactId>
+        </dependency>
+        <!-- Resolves the profile's resource libs (configured via
+             quarkus.dev-profile.dependencies) to jars at dev time. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-bootstrap-maven-resolver</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit-internal</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>io.quarkus</groupId>
+                            <artifactId>quarkus-extension-processor</artifactId>
+                            <version>${quarkus.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                        <!-- Quarkus's bootstrap resolver cannot see .mvn/maven.config, so it would read ~/.m2.
+                             Hand it the settings file and local repository this Maven session runs with (a
+                             command-line -s included). The .path matters: a File-valued expression comes out empty. -->
+                        <maven.settings>${session.request.userSettingsFile.path}</maven.settings>
+                        <maven.repo.local>${session.localRepository.basedir}</maven.repo.local>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

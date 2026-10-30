@@ -1,0 +1,19 @@
+quarkus:
+  # Adopt the test profile in quarkus:dev (dev-profile-adapter). Inert in test/prod.
+  dev-profile:
+    class: io.github.koslowskyj.example.ExampleProfile
+  datasource:
+    db-kind: postgresql
+    # The adopted profile's Postgres resource provides the connection in dev;
+    # the built-in datasource Dev Service is not used.
+    devservices:
+      enabled: false
+  flyway:
+    migrate-at-start: true
+
+# Persist the adopted resources' data under this module's .local/dev (gitignored).
+# Unset => ephemeral. Resolved relative to where quarkus:dev runs (this module dir).
+"%dev":
+  quarkus:
+    dev-profile:
+      data-dir: .local/dev
